@@ -168,8 +168,9 @@ if __name__ == '__main__':
             s = 2 * (info / (figureEnt[j] + labelEnt[i]))
             tempInfo.append(info)
             tempSu.append(s)
-        ig.append(tempInfo)  # 信息增益
-        su.append(tempSu)  # 归一化
+        ig.append(tempInfo)  # 每一特征与每一标记的信息增益
+        su.append(tempSu)  # 归一化ig
+    # print(ig)
     # print(su)
 
     igs = []
@@ -177,8 +178,23 @@ if __name__ == '__main__':
         temp = 0.0
         for i in range(len(ig)):
             temp += ig[i][j]
-        igs.append(temp)
-    print(igs)
+        igs.append(temp)  # 每一特征与所有标记的信息增益
+    # print(igs)
+
+    igsMean = np.mean(igs)  # igs的均值
+    igsVar = np.var(igs)  # igs的方差
+    igz = [(i - igsMean) / igsVar for i in igs]  # 信息增益正态分布化
+    # print(igz)
+
+    figureIndex = []
+    figureSelected = []
+    igzMean = np.mean([abs(i) for i in igz])  # 阈值
+    for i in range(len(igz)):
+        if abs(igz[i]) < igzMean:
+            figureIndex.append(i)  # 获取通过选择的特征在原特征矩阵的下标
+    figureSelected = emotions_test_data[:, figureIndex]  # 截取特征矩阵，获得仅含有被选中特征的矩阵
+    # print(figureIndex, len(figureIndex))
+    print(figureSelected, len(figureSelected[0]))
 
     # 绘制一维聚类结果
     # plt.scatter([px for px in x], [py for py in x], marker='.')
