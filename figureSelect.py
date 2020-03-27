@@ -27,7 +27,6 @@ def getFigureMatrix(data):
         # for k in range(len(km.labels_)):
         #     figure[j][k] = km.labels_[k]
         figure.append(km.labels_.tolist())
-    # print(figure)
     return figure
 
 def getProbability(mat):
@@ -36,9 +35,9 @@ def getProbability(mat):
     Args:
         mat: 特征/标记矩阵, 记录每个特征/标记在实例中的发生情况, row = 特征/标记数, column = 实例数
     Returns:
-        prob: 每个特征/标记在给定实例中的概率分布, row = 特征/标记数, column = 该行表示的特征/标记对应的类别数
+        pr: 每个特征/标记在给定实例中的概率分布, row = 特征/标记数, column = 该行表示的特征/标记对应的类别数
     '''
-    prob = []
+    pr = []
     for i in range(len(mat)):
         temp = []
         classDic = {}
@@ -48,22 +47,22 @@ def getProbability(mat):
             else: 
                 classDic[item] = 1
         for item in classDic:
-            temp.append(mat[i].count(item) / len(mat[i]))
-        prob.append(temp)
-    # print(prob)
-    return prob
+            # temp.append(mat[i].count(item) / len(mat[i]))
+            temp.append(classDic[item] / len(mat[i]))
+        pr.append(temp)
+    return pr
 
 def calcEntropy(data):
     '''
     计算信息熵
     Args:
         data: 含有某一特征的概率分布情况的列表, len = 类别数
-    Return:
+    Returns:
         ent: 该特征对应的信息熵, elementType = float
     '''
     ent = 0.0
     for p in data:
-        ent = -p * np.log(p)
+        ent = ent - p * np.log(p)
     return ent
 
 def getEntropy(prob):
@@ -77,7 +76,6 @@ def getEntropy(prob):
     entList = []
     for p in prob:
         entList.append(calcEntropy(p))
-    # print(entList)
     return entList
 
 def getMixFigureAndLabelMatrix(figureMat, labelMat, k):
@@ -99,47 +97,80 @@ def getMixFigureAndLabelMatrix(figureMat, labelMat, k):
         for j in range(len(fig)):
             temp.append(fig[j] * 10 + labelMat[k][j])
         mixMat.append(temp)
-    # print(mixMat)
     return mixMat
 
+def getConditionalEntropy(figureProb, figureMat, labelMat):
+    '''
+    计算条件熵
+    Args:
+        figureProb: 含有每个特征对应的概率分布的矩阵, row = 特征数, column = 该行表示的特征对应的类别数
+        figureMat: 特征标记矩阵, 记录每个特征在实例中的发生情况, row = 特征数, column = 实例数
+        labelMat: 标记矩阵, 记录每个特征对应的标记, row = 特征数, column = 实例数
+    Returns:
+        condEnt: 条件熵矩阵, 记录已知某特征的条件下求某标记的不确定度, row = 标记数, column = 特征数
+    '''
+    condEnt = []
+    for k in range(len(labelMat)):  # 标记数
+        temp = []
+        for i in range(len(figureMat)):  # 特征数
+            classDic = {}
+            for j in range(len(figureMat[i])):  
+                if figureMat[i][j] not in classDic:
+                    classDic[figureMat[i][j]] = 0
+                # 仅记录标记为1的实例数即可，标记为0可由len减之
+                if labelMat[k][j]:
+                    classDic[figureMat[i][j]] += 1
+            jointPr = 0.0
+            j = 0
+            for item in classDic:
+                p1 = classDic[item] / figureMat[i].count(item)  # label = 1的条件概率
+                p0 = 1 - p1  # label = 0的条件概率
+                jp1 = p1 * figureProb[i][j]  # label = 1的联合概率
+                jp0 = p0 * figureProb[i][j]  # label = 0的联合概率
+                # 需判断某一条件概率为0的情况，否则log(0)为-inf，会使得jointPr为nan
+                if p1 == 0:
+                    jointPr = jointPr  - jp0 * np.log(p0)
+                elif p0 == 0:
+                    jointPr = jointPr  - jp1 * np.log(p1)
+                else:
+                    jointPr = jointPr - jp1 * np.log(p1) - jp0 * np.log(p0)
+                j += 1
+            temp.append(jointPr)  # 条件熵
+        condEnt.append(temp)
+    return condEnt
 
 if __name__ == '__main__':
     emotions_test = loadmat("../dataset/original/test_data.mat")
     emotions_test_data = emotions_test['test_data']  # 训练集的实例特征
     emotions_test = loadmat("../dataset/original/test_target.mat")
     emotions_test_target = emotions_test['test_target']  # 训练集的实例标记
-    # print(emotions_test_target)
-    # print(emotions_test_data)
 
     figureMatrix = getFigureMatrix(emotions_test_data)  # 特征类别矩阵
-    figureProb = getProbability(figureMatrix)  # 特征的概率分布
-    figureEnt = getEntropy(figureProb)  # 特征的信息熵
-    # print(len(figureEnt))
+    figurePr = getProbability(figureMatrix)  # 特征的概率分布
+    figureEnt = getEntropy(figurePr)  # 特征的信息熵
+    # print(figureEnt)
 
     labelMatrix = emotions_test_target.tolist()  # 标记矩阵
-    labelProb = getProbability(labelMatrix)  # 标记的概率分布
-    labelEnt = getEntropy(labelProb)  # 标记的信息熵
+    labelPr = getProbability(labelMatrix)  # 标记的概率分布
+    labelEnt = getEntropy(labelPr)  # 标记的信息熵
     # print(labelEnt)
 
-    combinEnt = []
-    for i in range(len(labelMatrix)):
-        mixMatrix = getMixFigureAndLabelMatrix(figureMatrix, labelMatrix, i)  # 联合矩阵
-        mixProb = getProbability(mixMatrix)  # 联合概率分布
-        combinEnt.append(getEntropy(mixProb))  # 联合熵
-    # print(combinEnt)
+    condEnt = getConditionalEntropy(figurePr, figureMatrix, labelMatrix)  # 条件熵
+    # print(condEnt)
 
     ig = []
     su = []
-    for i in range(len(combinEnt)):
+    for i in range(len(condEnt)):
         tempInfo = []
         tempSu = []
-        for j in range(len(figureEnt)):
-            info = figureEnt[j] + labelEnt[i] - combinEnt[i][j]
+        for j in range(len(condEnt[i])):
+            info = labelEnt[i] - condEnt[i][j]
             s = 2 * (info / (figureEnt[j] + labelEnt[i]))
             tempInfo.append(info)
             tempSu.append(s)
         ig.append(tempInfo)  # 信息增益
         su.append(tempSu)  # 归一化
+    # print(su)
 
     igs = []
     for j in range(len(ig[0])):
@@ -148,11 +179,6 @@ if __name__ == '__main__':
             temp += ig[i][j]
         igs.append(temp)
     print(igs)
-    print(len(igs))
-
-
-
-
 
     # 绘制一维聚类结果
     # plt.scatter([px for px in x], [py for py in x], marker='.')
