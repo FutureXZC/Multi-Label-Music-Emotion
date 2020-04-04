@@ -2,13 +2,18 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.io import loadmat
-from sklearn.cluster import KMeans
+import sklearn.cluster as skc  # 密度聚类
+from sklearn.cluster import KMeans  # K-Means聚类
 import pandas as pd
+from sklearn.neighbors import KNeighborsClassifier
+from skmultilearn.adapt import MLkNN
+from sklearn.metrics import accuracy_score  # 准确率
+from sklearn.metrics import hamming_loss  # 汉明损失
 
 def getFigureMatrix(data):
     '''
     将所有特征在一维空间上聚类, 便于后面计算信息熵
-    聚类方式为K-Means
+    聚类方式为DBSCAN密度聚类
     Args:
         data: 原数据集的特征参数矩阵, row = 实例数, column = 特征数
     Returns:
@@ -19,14 +24,9 @@ def getFigureMatrix(data):
     for j in range(len(data[0])):  # 特征数量
         for i in range(len(data)):  # 将实例的特征集中取出
             xTrain[i][0] = data[i][j]
-        km = KMeans()
-        km.fit(xTrain)
-        # print(km.cluster_centers_)  # 聚类中心
-        res = km.labels_
-        # print(km.labels_)  # 聚类结果
-        # for k in range(len(km.labels_)):
-        #     figure[j][k] = km.labels_[k]
-        figure.append(km.labels_.tolist())
+        db = skc.DBSCAN().fit(xTrain)  # 密度聚类
+        # km = KMeans().fit(xTrain)  # KMeans聚类
+        figure.append(db.labels_.tolist())
     return figure
 
 def getProbability(mat):
@@ -47,7 +47,6 @@ def getProbability(mat):
             else: 
                 classDic[item] = 1
         for item in classDic:
-            # temp.append(mat[i].count(item) / len(mat[i]))
             temp.append(classDic[item] / len(mat[i]))
         pr.append(temp)
     return pr
@@ -140,20 +139,39 @@ def getConditionalEntropy(figureProb, figureMat, labelMat):
     return condEnt
 
 if __name__ == '__main__':
-    emotions_test = loadmat("../dataset/original/test_data.mat")
-    emotions_test_data = emotions_test['test_data']  # 训练集的实例特征
-    emotions_test = loadmat("../dataset/original/test_target.mat")
-    emotions_test_target = emotions_test['test_target']  # 训练集的实例标记
 
-    figureMatrix = getFigureMatrix(emotions_test_data)  # 特征类别矩阵
+    emotions_train = loadmat("../dataset/original/train_data.mat")
+    emotions_train_data = emotions_train['train_data']  # 训练集的实例特征
+    emotions_train = loadmat("../dataset/original/train_target.mat")
+    emotions_train_target = emotions_train['train_target']  # 训练集的实例特征
+
+    emotions_test = loadmat("../dataset/original/test_data.mat")
+    emotions_test_data = emotions_test['test_data']  # 测试集的实例特征
+    emotions_test = loadmat("../dataset/original/test_target.mat")
+    emotions_test_target = emotions_test['test_target']  # 测试集的实例标记
+    
+    y_train = emotions_train_target.transpose()
+    knn = KNeighborsClassifier()
+    print('Origin:')
+    for i in range(len(emotions_test_target)):
+        knn.fit(emotions_train_data, y_train[:, i])
+        y_pred = knn.predict(emotions_test_data)
+        y_test = emotions_test_target[i].transpose()
+        print('Accuracy: %.4f\tL%d' %(accuracy_score(y_test, y_pred), i+1))  # 准确率
+    knn.fit(emotions_train_data, y_train)
+    y_pred = knn.predict(emotions_test_data)
+    y_test = emotions_test_target.transpose()
+    print('Hamming Loss: %.4f' %hamming_loss(y_test, y_pred))  # hamming loss
+
+    figureMatrix = getFigureMatrix(emotions_train_data)  # 特征类别矩阵
     figurePr = getProbability(figureMatrix)  # 特征的概率分布
     figureEnt = getEntropy(figurePr)  # 特征的信息熵
-    # print(figureEnt)
+    # print(figurePr)
 
-    labelMatrix = emotions_test_target.tolist()  # 标记矩阵
+    labelMatrix = emotions_train_target.tolist()  # 标记矩阵
     labelPr = getProbability(labelMatrix)  # 标记的概率分布
     labelEnt = getEntropy(labelPr)  # 标记的信息熵
-    # print(labelEnt)
+    # print(labelMatrix)
 
     condEnt = getConditionalEntropy(figurePr, figureMatrix, labelMatrix)  # 条件熵
     # print(condEnt)
@@ -192,9 +210,24 @@ if __name__ == '__main__':
     for i in range(len(igz)):
         if abs(igz[i]) < igzMean:
             figureIndex.append(i)  # 获取通过选择的特征在原特征矩阵的下标
-    figureSelected = emotions_test_data[:, figureIndex]  # 截取特征矩阵，获得仅含有被选中特征的矩阵
-    # print(figureIndex, len(figureIndex))
-    print(figureSelected, len(figureSelected[0]))
+    figureSelected = emotions_train_data[:, figureIndex]  # 截取特征矩阵，获得仅含有被选中特征的矩阵
+    # print(figureSelected, len(figureSelected[0]), len(figureSelected))
+    y_train = emotions_train_target.transpose()
+    # print(y_train, len(y_train[0]), len(y_train))
+
+    # 对每个标记进行预测，用准确率评估
+    print('Selected:')
+    knn = KNeighborsClassifier()  # 基分类器选用KNN
+    for i in range(len(emotions_test_target)):
+        knn.fit(figureSelected, y_train[:, i])
+        y_pred = knn.predict(emotions_test_data[:, figureIndex])
+        y_test = emotions_test_target[i].transpose()
+        print('Accuracy: %.4f\tL%d' %(accuracy_score(y_test, y_pred), i+1))  # 准确率
+    # 对整体进行预测和评估
+    knn.fit(figureSelected, y_train)
+    y_pred = knn.predict(emotions_test_data[:, figureIndex])
+    y_test = emotions_test_target.transpose()
+    print('Hamming Loss: %.4f' %hamming_loss(y_test, y_pred))  # 汉明损失
 
     # 绘制一维聚类结果
     # plt.scatter([px for px in x], [py for py in x], marker='.')
