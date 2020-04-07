@@ -2,13 +2,11 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.io import loadmat
-import sklearn.cluster as skc  # 密度聚类
-from sklearn.cluster import KMeans  # K-Means聚类
+import sklearn.cluster as skc
+from sklearn.cluster import KMeans
 import pandas as pd
 from sklearn.neighbors import KNeighborsClassifier
-from skmultilearn.adapt import MLkNN
-from sklearn.metrics import accuracy_score  # 准确率
-from sklearn.metrics import hamming_loss  # 汉明损失
+from sklearn import metrics
 
 def getFigureMatrix(data):
     '''
@@ -138,37 +136,60 @@ def getConditionalEntropy(figureProb, figureMat, labelMat):
         condEnt.append(temp)
     return condEnt
 
+def modelPredict(dataTrain, targetTrain, dataTest, targetTest, clf):
+    '''
+    模型预测，并输出评价指标
+    Args: 
+        dataTrain: 训练数据
+        targetTrain: 训练标记
+        dataTest: 测试数据
+        targetTest: 测试标记
+        clf: 基分类器
+    '''
+    # 基分类器由clf传入
+    for i in range(len(targetTest)):
+        clf.fit(dataTrain, targetTrain[:, i])
+        yPred = clf.predict(dataTest)
+        yTest = targetTest[i].transpose()
+        print('Accuracy-L{}:\t\t{:.4f}{}'.format(i+1, metrics.accuracy_score(yTest, yPred), '↗'))
+    # 对整体进行预测和评估
+    clf.fit(dataTrain, targetTrain)
+    yPred = clf.predict(dataTest)
+    yTest = targetTest.transpose()
+    print('Hamming Loss: \t\t{:.4f}{}'.format(metrics.hamming_loss(yTest, yPred), '↘'))
+    print('Coverage Error: \t{:.4f}{}'.format(metrics.coverage_error(yTest, yPred), '↘'))
+    print('Ranking Loss: \t\t{:.4f}{}'.format(metrics.label_ranking_loss(yTest, yPred), '↘'))
+    print('Avg. Precision: \t{:.4f}{}'.format(np.mean(metrics.precision_score(yTest, yPred, average = None)), '↗'))
+    print('Micro-F1: \t\t{:.4f}{}'.format(metrics.f1_score(yTest, yPred, average = 'micro'), '↗'))
+    print('Micro-AUC: \t\t{:.4f}{}'.format(metrics.roc_auc_score(yTest, yPred, average = 'micro'), '↗'))
+    print('Macro-F1: \t\t{:.4f}{}'.format(metrics.f1_score(yTest, yPred, average = 'macro'), '↗'))
+    print('Macro-AUC: \t\t{:.4f}{}'.format(metrics.roc_auc_score(yTest, yPred, average = 'macro'), '↗'))
+    print()
+
 if __name__ == '__main__':
 
-    emotions_train = loadmat("../dataset/original/train_data.mat")
-    emotions_train_data = emotions_train['train_data']  # 训练集的实例特征
-    emotions_train = loadmat("../dataset/original/train_target.mat")
-    emotions_train_target = emotions_train['train_target']  # 训练集的实例特征
+    emotionsTrain = loadmat("../dataset/original/train_data.mat")
+    emotionsTrainData = emotionsTrain['train_data']  # 训练集的实例特征
+    emotionsTrain = loadmat("../dataset/original/train_target.mat")
+    emotionsTrainTarget = emotionsTrain['train_target']  # 训练集的实例特征
 
-    emotions_test = loadmat("../dataset/original/test_data.mat")
-    emotions_test_data = emotions_test['test_data']  # 测试集的实例特征
-    emotions_test = loadmat("../dataset/original/test_target.mat")
-    emotions_test_target = emotions_test['test_target']  # 测试集的实例标记
+    emotionsTest = loadmat("../dataset/original/test_data.mat")
+    emotionsTestData = emotionsTest['test_data']  # 测试集的实例特征
+    emotionsTest = loadmat("../dataset/original/test_target.mat")
+    emotionsTestTarget = emotionsTest['test_target']  # 测试集的实例标记
     
-    y_train = emotions_train_target.transpose()
+    yTrain = emotionsTrainTarget.transpose()
     knn = KNeighborsClassifier()
+    # 模型初始预测
     print('Origin:')
-    for i in range(len(emotions_test_target)):
-        knn.fit(emotions_train_data, y_train[:, i])
-        y_pred = knn.predict(emotions_test_data)
-        y_test = emotions_test_target[i].transpose()
-        print('Accuracy: %.4f\tL%d' %(accuracy_score(y_test, y_pred), i+1))  # 准确率
-    knn.fit(emotions_train_data, y_train)
-    y_pred = knn.predict(emotions_test_data)
-    y_test = emotions_test_target.transpose()
-    print('Hamming Loss: %.4f' %hamming_loss(y_test, y_pred))  # hamming loss
+    modelPredict(emotionsTrainData, yTrain, emotionsTestData, emotionsTestTarget, knn)
 
-    figureMatrix = getFigureMatrix(emotions_train_data)  # 特征类别矩阵
+    figureMatrix = getFigureMatrix(emotionsTrainData)  # 特征类别矩阵
     figurePr = getProbability(figureMatrix)  # 特征的概率分布
     figureEnt = getEntropy(figurePr)  # 特征的信息熵
     # print(figurePr)
 
-    labelMatrix = emotions_train_target.tolist()  # 标记矩阵
+    labelMatrix = emotionsTrainTarget.tolist()  # 标记矩阵
     labelPr = getProbability(labelMatrix)  # 标记的概率分布
     labelEnt = getEntropy(labelPr)  # 标记的信息熵
     # print(labelMatrix)
@@ -210,24 +231,14 @@ if __name__ == '__main__':
     for i in range(len(igz)):
         if abs(igz[i]) < igzMean:
             figureIndex.append(i)  # 获取通过选择的特征在原特征矩阵的下标
-    figureSelected = emotions_train_data[:, figureIndex]  # 截取特征矩阵，获得仅含有被选中特征的矩阵
-    # print(figureSelected, len(figureSelected[0]), len(figureSelected))
-    y_train = emotions_train_target.transpose()
-    # print(y_train, len(y_train[0]), len(y_train))
+    # 截取特征矩阵，获得仅含有被选中特征的矩阵
+    figureSelectedTrain = emotionsTrainData[:, figureIndex]
+    figureSelectedTest = emotionsTestData[:, figureIndex]
+    yTrain = emotionsTrainTarget.transpose()
 
-    # 对每个标记进行预测，用准确率评估
+    # 对每个标记进行预测，并输出评价指标
     print('Selected:')
-    knn = KNeighborsClassifier()  # 基分类器选用KNN
-    for i in range(len(emotions_test_target)):
-        knn.fit(figureSelected, y_train[:, i])
-        y_pred = knn.predict(emotions_test_data[:, figureIndex])
-        y_test = emotions_test_target[i].transpose()
-        print('Accuracy: %.4f\tL%d' %(accuracy_score(y_test, y_pred), i+1))  # 准确率
-    # 对整体进行预测和评估
-    knn.fit(figureSelected, y_train)
-    y_pred = knn.predict(emotions_test_data[:, figureIndex])
-    y_test = emotions_test_target.transpose()
-    print('Hamming Loss: %.4f' %hamming_loss(y_test, y_pred))  # 汉明损失
+    modelPredict(figureSelectedTrain, yTrain, figureSelectedTest, emotionsTestTarget, knn)
 
     # 绘制一维聚类结果
     # plt.scatter([px for px in x], [py for py in x], marker='.')
