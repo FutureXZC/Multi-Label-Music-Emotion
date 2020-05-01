@@ -6,6 +6,9 @@ import sklearn.cluster as skc
 from sklearn.cluster import KMeans
 import pandas as pd
 from sklearn.neighbors import KNeighborsClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.svm import SVC
+from sklearn.naive_bayes import GaussianNB
 from sklearn import metrics
 
 def getFigureMatrix(data):
@@ -145,26 +148,37 @@ def modelPredict(dataTrain, targetTrain, dataTest, targetTest, clf):
         dataTest: 测试数据
         targetTest: 测试标记
         clf: 基分类器
+    Return:
+        ans: 含有所有评价指标数据的列表
     '''
+    ans = []
     # 基分类器由clf传入
     for i in range(len(targetTest)):
         clf.fit(dataTrain, targetTrain[:, i])
         yPred = clf.predict(dataTest)
         yTest = targetTest[i].transpose()
-        print('Accuracy-L{}:\t\t{:.4f}{}'.format(i+1, metrics.accuracy_score(yTest, yPred), '↗'))
+        ans.append(metrics.accuracy_score(yTest, yPred))
+        # print('Accuracy-L{}:\t\t{:.4f}{}'.format(i+1, metrics.accuracy_score(yTest, yPred), '↗'))
     # 对整体进行预测和评估
     clf.fit(dataTrain, targetTrain)
     yPred = clf.predict(dataTest)
     yTest = targetTest.transpose()
-    print('Hamming Loss: \t\t{:.4f}{}'.format(metrics.hamming_loss(yTest, yPred), '↘'))
-    print('Coverage Error: \t{:.4f}{}'.format(metrics.coverage_error(yTest, yPred), '↘'))
-    print('Ranking Loss: \t\t{:.4f}{}'.format(metrics.label_ranking_loss(yTest, yPred), '↘'))
-    print('Avg. Precision: \t{:.4f}{}'.format(np.mean(metrics.precision_score(yTest, yPred, average = None)), '↗'))
-    print('Micro-F1: \t\t{:.4f}{}'.format(metrics.f1_score(yTest, yPred, average = 'micro'), '↗'))
-    print('Micro-AUC: \t\t{:.4f}{}'.format(metrics.roc_auc_score(yTest, yPred, average = 'micro'), '↗'))
-    print('Macro-F1: \t\t{:.4f}{}'.format(metrics.f1_score(yTest, yPred, average = 'macro'), '↗'))
-    print('Macro-AUC: \t\t{:.4f}{}'.format(metrics.roc_auc_score(yTest, yPred, average = 'macro'), '↗'))
-    print()
+    ans.append(metrics.hamming_loss(yTest, yPred))
+    ans.append(metrics.label_ranking_loss(yTest, yPred))
+    ans.append(np.mean(metrics.precision_score(yTest, yPred, average = None)))
+    ans.append(metrics.f1_score(yTest, yPred, average = 'micro'))
+    ans.append(metrics.roc_auc_score(yTest, yPred, average = 'micro'))
+    ans.append(metrics.f1_score(yTest, yPred, average = 'macro'))
+    ans.append(metrics.roc_auc_score(yTest, yPred, average = 'macro'))
+    # print('Hamming Loss: \t\t{:.4f}{}'.format(metrics.hamming_loss(yTest, yPred), '↘'))
+    # print('Ranking Loss: \t\t{:.4f}{}'.format(metrics.label_ranking_loss(yTest, yPred), '↘'))
+    # print('Avg. Precision: \t{:.4f}{}'.format(np.mean(metrics.precision_score(yTest, yPred, average = None)), '↗'))
+    # print('Micro-F1: \t\t{:.4f}{}'.format(metrics.f1_score(yTest, yPred, average = 'micro'), '↗'))
+    # print('Micro-AUC: \t\t{:.4f}{}'.format(metrics.roc_auc_score(yTest, yPred, average = 'micro'), '↗'))
+    # print('Macro-F1: \t\t{:.4f}{}'.format(metrics.f1_score(yTest, yPred, average = 'macro'), '↗'))
+    # print('Macro-AUC: \t\t{:.4f}{}'.format(metrics.roc_auc_score(yTest, yPred, average = 'macro'), '↗'))
+    # print()
+    return ans
 
 if __name__ == '__main__':
 
@@ -180,9 +194,9 @@ if __name__ == '__main__':
     
     yTrain = emotionsTrainTarget.transpose()
     knn = KNeighborsClassifier()
-    # 模型初始预测
-    print('Origin:')
-    modelPredict(emotionsTrainData, yTrain, emotionsTestData, emotionsTestTarget, knn)
+    dt = DecisionTreeClassifier()
+    # svm = SVC(gamma = 'auto', probability = True)
+    # nb = GaussianNB()
 
     figureMatrix = getFigureMatrix(emotionsTrainData)  # 特征类别矩阵
     figurePr = getProbability(figureMatrix)  # 特征的概率分布
@@ -216,7 +230,7 @@ if __name__ == '__main__':
     for j in range(len(ig[0])):
         temp = 0.0
         for i in range(len(ig)):
-            temp += ig[i][j]
+            temp += su[i][j]
         igs.append(temp)  # 每一特征与所有标记的信息增益
     # print(igs)
 
@@ -226,7 +240,6 @@ if __name__ == '__main__':
     # print(igz)
 
     figureIndex = []
-    figureSelected = []
     igzMean = np.mean([abs(i) for i in igz])  # 阈值
     for i in range(len(igz)):
         if abs(igz[i]) < igzMean:
@@ -235,13 +248,49 @@ if __name__ == '__main__':
     figureSelectedTrain = emotionsTrainData[:, figureIndex]
     figureSelectedTest = emotionsTestData[:, figureIndex]
     yTrain = emotionsTrainTarget.transpose()
+    # print(len(figureSelectedTrain[0]))  # 67
 
+    metricDataOrigin = []
+    metricDataSelected = []
     # 对每个标记进行预测，并输出评价指标
-    print('Selected:')
-    modelPredict(figureSelectedTrain, yTrain, figureSelectedTest, emotionsTestTarget, knn)
+    metricDataOrigin.append(modelPredict(emotionsTrainData, yTrain, emotionsTestData, emotionsTestTarget, knn))
+    metricDataSelected.append(modelPredict(figureSelectedTrain, yTrain, figureSelectedTest, emotionsTestTarget, knn))
+    metricDataOrigin.append(modelPredict(emotionsTrainData, yTrain, emotionsTestData, emotionsTestTarget, dt))
+    metricDataSelected.append(modelPredict(figureSelectedTrain, yTrain, figureSelectedTest, emotionsTestTarget, dt))
+    # print("==========================================")
+    # print('svm:')
+    # print('Origin:')
+    # modelPredict(emotionsTrainData, yTrain, emotionsTestData, emotionsTestTarget, svm)
+    # print('Selected:')
+    # modelPredict(figureSelectedTrain, yTrain, figureSelectedTest, emotionsTestTarget, svm)
+    # print("==========================================")
+    # print('Naive Bayes:')
+    # print('Origin:')
+    # modelPredict(emotionsTrainData, yTrain, emotionsTestData, emotionsTestTarget, nb)
+    # print('Selected:')
+    # modelPredict(figureSelectedTrain, yTrain, figureSelectedTest, emotionsTestTarget, nb)
+    # print("==========================================")
+    metricDataOrigin = np.array(metricDataOrigin)
+    metricDataSelected = np.array(metricDataSelected)
 
-    # 绘制一维聚类结果
-    # plt.scatter([px for px in x], [py for py in x], marker='.')
-    # plt.scatter([px for px in km.cluster_centers_], [py for py in km.cluster_centers_], marker='.')
-    # plt.scatter([px for px in figure], [py for py in figure], marker='.')
-    # plt.show()
+    # 绘图
+    figureSize = len(metricDataOrigin)
+    plt.figure(figureSize)
+    xIndex = np.arange(1, 26, 2)
+    xData = ('L1 Accuracy', 'L2 Accuracy', 'L3 Accuracy', 'L4 Accuracy',
+             'L5 Accuracy', 'L6 Accuracy', 'Hamming Loss',
+             'Label Ranking', 'Precision Score',
+             'Micro F1', 'Micro AUC', 'Macro F1', 'Macro AUC')
+    title = ('KNN', 'Decision Tree')
+    barWidth = 0.60
+    for i in range(len(metricDataOrigin)):
+        plt.subplot(figureSize, 1, i + 1)
+        plt.bar(xIndex, metricDataOrigin[i], width = barWidth,
+                alpha = 0.6, color = 'b', label = 'Origin')
+        plt.bar(xIndex + barWidth, metricDataSelected[i], width = barWidth,
+                alpha = 0.6, color = 'r', label = 'Selected')
+        plt.xticks(xIndex + barWidth / 2, xData, rotation = 40)
+        plt.title(title[i])
+        plt.legend()
+    plt.tight_layout()
+    plt.show()
