@@ -180,6 +180,50 @@ def modelPredict(dataTrain, targetTrain, dataTest, targetTest, clf):
     # print()
     return ans
 
+def getEuclideanDistance(data, npData, m):
+    '''
+    聚类, 计算特征与聚类中心的欧氏距离
+    Args:
+        data: 原数据
+        npData: 正例/负例数据
+        m: 聚类中心个数
+    Return:
+        ed: 包含欧氏距离数据的矩阵
+    '''
+    yPred = KMeans(n_clusters = m).fit(npData)
+    centers = yPred.cluster_centers_
+    ed = []
+    for i in range(len(data)):
+        temp = []
+        for j in range(m):
+            temp.append(np.linalg.norm(data[i] - centers[j]))
+        ed.append(temp)
+    return np.array(ed)
+
+def getMapping(data, target):
+    '''
+    截取正负实例矩阵, 根据原特征聚类, 返回根据算法映射的新特征矩阵
+    Args:
+        data: 实例的特征集
+        target: 实例的对应的标记集
+    Return:
+        mapping: 新的特征矩阵, 数据为实例到各个聚类中心的欧式距离
+        yk: 新的标记记法, 正例标记为1，负类标记为-1
+    '''
+    mapping, yk = [], []
+    for i in range(len(target[0])):
+        pIndex = target[:, i] == 1
+        nIndex = target[:, i] == 0
+        pData = data[pIndex, :]
+        nData = data[nIndex, :]
+        m = (int)(0.1 * min(len(pData), len(nData)))
+        temp = getEuclideanDistance(data, pData, m)
+        temp = np.hstack((temp, getEuclideanDistance(data, nData, m)))
+        mapping.append(temp.tolist())
+        yk.append([1 if pIndex[i] else -1 for i in range(len(target))])
+    yk = [[row[i] for row in yk] for i in range(len(yk[0]))]
+    return mapping, yk
+
 if __name__ == '__main__':
 
     emotionsTrain = loadmat("../dataset/original/train_data.mat")
@@ -211,11 +255,9 @@ if __name__ == '__main__':
     condEnt = getConditionalEntropy(figurePr, figureMatrix, labelMatrix)  # 条件熵
     # print(condEnt)
 
-    ig = []
-    su = []
+    ig, su = [], []
     for i in range(len(condEnt)):
-        tempInfo = []
-        tempSu = []
+        tempInfo, tempSu = [], []
         for j in range(len(condEnt[i])):
             info = labelEnt[i] - condEnt[i][j]
             s = 2 * (info / (figureEnt[j] + labelEnt[i]))
@@ -248,49 +290,53 @@ if __name__ == '__main__':
     figureSelectedTrain = emotionsTrainData[:, figureIndex]
     figureSelectedTest = emotionsTestData[:, figureIndex]
     yTrain = emotionsTrainTarget.transpose()
+    yTest = emotionsTestTarget.transpose()
     # print(len(figureSelectedTrain[0]))  # 67
 
-    metricDataOrigin = []
-    metricDataSelected = []
-    # 对每个标记进行预测，并输出评价指标
-    metricDataOrigin.append(modelPredict(emotionsTrainData, yTrain, emotionsTestData, emotionsTestTarget, knn))
-    metricDataSelected.append(modelPredict(figureSelectedTrain, yTrain, figureSelectedTest, emotionsTestTarget, knn))
-    metricDataOrigin.append(modelPredict(emotionsTrainData, yTrain, emotionsTestData, emotionsTestTarget, dt))
-    metricDataSelected.append(modelPredict(figureSelectedTrain, yTrain, figureSelectedTest, emotionsTestTarget, dt))
-    # print("==========================================")
-    # print('svm:')
-    # print('Origin:')
-    # modelPredict(emotionsTrainData, yTrain, emotionsTestData, emotionsTestTarget, svm)
-    # print('Selected:')
-    # modelPredict(figureSelectedTrain, yTrain, figureSelectedTest, emotionsTestTarget, svm)
-    # print("==========================================")
-    # print('Naive Bayes:')
-    # print('Origin:')
-    # modelPredict(emotionsTrainData, yTrain, emotionsTestData, emotionsTestTarget, nb)
-    # print('Selected:')
-    # modelPredict(figureSelectedTrain, yTrain, figureSelectedTest, emotionsTestTarget, nb)
-    # print("==========================================")
-    metricDataOrigin = np.array(metricDataOrigin)
-    metricDataSelected = np.array(metricDataSelected)
+    # 筛选正负例, 通过聚类算法映射新特征
+    mappingTrain, ykTrain = getMapping(figureSelectedTrain, yTrain)
+    # mappingTest, ykTest = getMapping(figureSelectedTest, yTest)
 
-    # 绘图
-    figureSize = len(metricDataOrigin)
-    plt.figure(figureSize)
-    xIndex = np.arange(1, 26, 2)
-    xData = ('L1 Accuracy', 'L2 Accuracy', 'L3 Accuracy', 'L4 Accuracy',
-             'L5 Accuracy', 'L6 Accuracy', 'Hamming Loss',
-             'Label Ranking', 'Precision Score',
-             'Micro F1', 'Micro AUC', 'Macro F1', 'Macro AUC')
-    title = ('KNN', 'Decision Tree')
-    barWidth = 0.60
-    for i in range(len(metricDataOrigin)):
-        plt.subplot(figureSize, 1, i + 1)
-        plt.bar(xIndex, metricDataOrigin[i], width = barWidth,
-                alpha = 0.6, color = 'b', label = 'Origin')
-        plt.bar(xIndex + barWidth, metricDataSelected[i], width = barWidth,
-                alpha = 0.6, color = 'r', label = 'Selected')
-        plt.xticks(xIndex + barWidth / 2, xData, rotation = 40)
-        plt.title(title[i])
-        plt.legend()
-    plt.tight_layout()
-    plt.show()
+    # metricDataOrigin, metricDataSelected = [], []
+    # # 对每个标记进行预测，并输出评价指标
+    # metricDataOrigin.append(modelPredict(emotionsTrainData, yTrain, emotionsTestData, emotionsTestTarget, knn))
+    # metricDataSelected.append(modelPredict(figureSelectedTrain, yTrain, figureSelectedTest, emotionsTestTarget, knn))
+    # metricDataOrigin.append(modelPredict(emotionsTrainData, yTrain, emotionsTestData, emotionsTestTarget, dt))
+    # metricDataSelected.append(modelPredict(figureSelectedTrain, yTrain, figureSelectedTest, emotionsTestTarget, dt))
+    # # print("==========================================")
+    # # print('svm:')
+    # # print('Origin:')
+    # # modelPredict(emotionsTrainData, yTrain, emotionsTestData, emotionsTestTarget, svm)
+    # # print('Selected:')
+    # # modelPredict(figureSelectedTrain, yTrain, figureSelectedTest, emotionsTestTarget, svm)
+    # # print("==========================================")
+    # # print('Naive Bayes:')
+    # # print('Origin:')
+    # # modelPredict(emotionsTrainData, yTrain, emotionsTestData, emotionsTestTarget, nb)
+    # # print('Selected:')
+    # # modelPredict(figureSelectedTrain, yTrain, figureSelectedTest, emotionsTestTarget, nb)
+    # # print("==========================================")
+    # metricDataOrigin = np.array(metricDataOrigin)
+    # metricDataSelected = np.array(metricDataSelected)
+
+    # # 绘图
+    # figureSize = len(metricDataOrigin)
+    # plt.figure(figureSize)
+    # xIndex = np.arange(1, 26, 2)
+    # xData = ('L1 Accuracy', 'L2 Accuracy', 'L3 Accuracy', 'L4 Accuracy',
+    #          'L5 Accuracy', 'L6 Accuracy', 'Hamming Loss',
+    #          'Label Ranking', 'Precision Score',
+    #          'Micro F1', 'Micro AUC', 'Macro F1', 'Macro AUC')
+    # title = ('KNN', 'Decision Tree')
+    # barWidth = 0.60
+    # for i in range(len(metricDataOrigin)):
+    #     plt.subplot(figureSize, 1, i + 1)
+    #     plt.bar(xIndex, metricDataOrigin[i], width = barWidth,
+    #             alpha = 0.6, color = 'b', label = 'Origin')
+    #     plt.bar(xIndex + barWidth, metricDataSelected[i], width = barWidth,
+    #             alpha = 0.6, color = 'r', label = 'Selected')
+    #     plt.xticks(xIndex + barWidth / 2, xData, rotation = 40)
+    #     plt.title(title[i])
+    #     plt.legend()
+    # plt.tight_layout()
+    # plt.show()
