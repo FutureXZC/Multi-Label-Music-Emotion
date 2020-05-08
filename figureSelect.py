@@ -196,7 +196,6 @@ def getEuclideanDistance(data, npData, centers, m):
         temp = []
         for j in range(m):
             temp.append(np.linalg.norm(data[i] - centers[j]))
-            # temp.append(sum((x - y)**2 for x, y in zip(data[i], centers[j]))**0.5)
         ed.append(temp)
     return np.array(ed)
 
@@ -239,6 +238,36 @@ def getMapping(dataTrain, targetTrain, dataTest, targetTest):
     ykTest = [[row[i] for row in ykTest] for i in range(len(ykTest[0]))]
     return mappingTrain, ykTrain, mappingTest, ykTest
 
+def BRModelPredict(dataTrain, targetTrain, dataTest, targetTest, clf, m):
+    '''
+    用二分类器对模型进行预测，并输出评价指标
+    Args:
+        dataTrain: 训练集实例的特征集
+        targetTrain: 训练集实例对应的标记集
+        dataTest: 测试集实例的特征集
+        targetTest: 测试集实例对应的标记集
+        clf: 基二分类器
+        m: 模式参数，0代表特征转化后的模式，1代表原数据模式
+    Return:
+        BMetric: 含有每个标记单独的评价指标的列表
+    '''
+    BRMetric = []
+    count = len(targetTrain[0]) if m == 0 else len(dataTrain)
+    for i in range(count):
+        if m == 0:
+            clf.fit(np.array(dataTrain), np.array(targetTrain)[:, i])
+            y = clf.predict(dataTest)
+        else:
+            clf.fit(np.array(dataTrain[i]), np.array(targetTrain)[:, i])
+            y = clf.predict(dataTest[i])
+        temp = []
+        temp.append(metrics.hamming_loss(y, np.array(targetTest)[:, i]))
+        temp.append(metrics.precision_score(y, np.array(targetTest)[:, i]))
+        temp.append(metrics.f1_score(y, np.array(targetTest)[:, i], average = 'micro'))
+        temp.append(metrics.f1_score(y, np.array(targetTest)[:, i], average = 'macro'))
+        BRMetric.append(temp)
+    return BRMetric
+
 if __name__ == '__main__':
 
     emotionsTrain = loadmat("../dataset/original/train_data.mat")
@@ -255,7 +284,7 @@ if __name__ == '__main__':
     knn = KNeighborsClassifier()
     dt = DecisionTreeClassifier()
     svm = SVC(gamma = 'auto', probability = True)
-    # nb = GaussianNB()
+    nb = GaussianNB()
 
     figureMatrix = getFigureMatrix(emotionsTrainData)  # 特征类别矩阵
     figurePr = getProbability(figureMatrix)  # 特征的概率分布
@@ -300,7 +329,8 @@ if __name__ == '__main__':
     igzMean = np.mean([abs(i) for i in igz])  # 阈值
     for i in range(len(igz)):
         if abs(igz[i]) < igzMean:
-            figureIndex.append(i)  # 获取通过选择的特征在原特征矩阵的下标
+            # 获取通过选择的特征在原特征矩阵的下标
+            figureIndex.append(i)
     # 截取特征矩阵，获得仅含有被选中特征的矩阵
     figureSelectedTrain = emotionsTrainData[:, figureIndex]
     figureSelectedTest = emotionsTestData[:, figureIndex]
@@ -311,51 +341,26 @@ if __name__ == '__main__':
     # 筛选正负例, 通过聚类算法映射新特征
     mappingTrain, ykTrain, mappingTest, ykTest = getMapping(figureSelectedTrain, yTrain, figureSelectedTest, yTest)
 
+    # 对数据集进行预测，并输出评价指标，对标记选择前后的多标记表现进行对比
     metricDataOrigin, metricDataSelected = [], []
-    # 对每个标记进行预测，并输出评价指标
+    # KNN
     metricDataOrigin.append(modelPredict(emotionsTrainData, yTrain, emotionsTestData, emotionsTestTarget, knn))
     metricDataSelected.append(modelPredict(figureSelectedTrain, yTrain, figureSelectedTest, emotionsTestTarget, knn))
+    # Decision Tree
     metricDataOrigin.append(modelPredict(emotionsTrainData, yTrain, emotionsTestData, emotionsTestTarget, dt))
     metricDataSelected.append(modelPredict(figureSelectedTrain, yTrain, figureSelectedTest, emotionsTestTarget, dt))
-    print("==========================================")
-    print('svm:')
-    hl,pr, mif1, maf1  = [], [], [], []
-    print('Origin:')
-    for i in range(len(yTrain[0])):
-        svm.fit(np.array(figureSelectedTrain), np.array(yTrain)[:, i])
-        y = svm.predict(figureSelectedTest)
-        hl.append(metrics.hamming_loss(y, np.array(yTest)[:, i]))
-        pr.append(metrics.precision_score(y, np.array(yTest)[:, i]))
-        mif1.append(metrics.f1_score(y, np.array(yTest)[:, i], average = 'micro'))
-        maf1.append(metrics.f1_score(y, np.array(yTest)[:, i], average = 'macro'))
-    print('Hamming Loss: ',hl)
-    print('Precision Score: ', pr)
-    print('Micro F1: ', mif1)
-    print('Macro F1: ', maf1)
-    hl,pr, mif1, maf1  = [], [], [], []
-    print('LIFT:')
-    for i in range(len(mappingTrain)):
-        svm.fit(np.array(mappingTrain[i]), np.array(ykTrain)[:, i])
-        y = svm.predict(mappingTest[i])
-        hl.append(metrics.hamming_loss(y, np.array(ykTest)[:, i]))
-        pr.append(metrics.precision_score(y, np.array(ykTest)[:, i]))
-        mif1.append(metrics.f1_score(y, np.array(ykTest)[:, i], average = 'micro'))
-        maf1.append(metrics.f1_score(y, np.array(ykTest)[:, i], average = 'macro'))
-    print('Hamming Loss: ',hl)
-    print('Precision Score: ', pr)
-    print('Micro F1: ', mif1)
-    print('Macro F1: ', maf1)
-    print("==========================================")
-    # # print('Naive Bayes:')
-    # # print('Origin:')
-    # # modelPredict(emotionsTrainData, yTrain, emotionsTestData, emotionsTestTarget, nb)
-    # # print('Selected:')
-    # # modelPredict(figureSelectedTrain, yTrain, figureSelectedTest, emotionsTestTarget, nb)
-    # # print("==========================================")
-    # metricDataOrigin = np.array(metricDataOrigin)
-    # metricDataSelected = np.array(metricDataSelected)
+    
+    # 对每个标记进行预测，并输出评价指标，对特征处理前后的多标记表现进行对比
+    BRMetricOrigin, BRMetricLift = [], []
+    # SVM
+    BRMetricOrigin.append(BRModelPredict(figureSelectedTrain, yTrain, figureSelectedTest, yTest, svm, 0))
+    BRMetricLift.append(BRModelPredict(mappingTrain, ykTrain, mappingTest, ykTest, svm, 1))
+    # Naive Bayes
+    BRMetricOrigin.append(BRModelPredict(figureSelectedTrain, yTrain, figureSelectedTest, yTest, nb, 0))
+    BRMetricLift.append(BRModelPredict(mappingTrain, ykTrain, mappingTest, ykTest, nb, 1))
 
     # 绘图
+    # 标记选择前后对比
     figureSize = len(metricDataOrigin)
     plt.figure(figureSize)
     xIndex = np.arange(1, 26, 2)
@@ -365,7 +370,7 @@ if __name__ == '__main__':
              'Micro F1', 'Micro AUC', 'Macro F1', 'Macro AUC')
     title = ('KNN', 'Decision Tree')
     barWidth = 0.60
-    for i in range(len(metricDataOrigin)):
+    for i in range(figureSize):
         plt.subplot(figureSize, 1, i + 1)
         plt.bar(xIndex, metricDataOrigin[i], width = barWidth,
                 alpha = 0.6, color = 'b', label = 'Origin')
@@ -376,3 +381,23 @@ if __name__ == '__main__':
         plt.legend()
     plt.tight_layout()
     plt.show()
+    # 特征处理前后对比
+    figureSize = len(BRMetricOrigin[0])
+    plt.figure(figureSize)
+    xIndex = np.arange(1, 8, 2)
+    xData = ('Hamming Loss', 'Precision Score', 'Micro F1', 'Macro F1')
+    title = ('SVM', 'Naive Bayes')
+    label = ('L1', 'L2', 'L3', 'L4', 'L5','L6')
+    barWidth = 0.60
+    for i in range(len(BRMetricOrigin)):
+        for j in range(figureSize):
+            plt.subplot(figureSize / 2, 2, j + 1)
+            plt.bar(xIndex, BRMetricOrigin[i][j], width = barWidth,
+                    alpha = 0.6, color = 'b', label = 'Origin')
+            plt.bar(xIndex + barWidth, BRMetricLift[i][j], width = barWidth,
+                    alpha = 0.6, color = 'r', label = 'Selected')
+            plt.xticks(xIndex + barWidth / 2, xData)
+            plt.title(title[i] + '-' + label[j])
+            plt.legend()
+        plt.tight_layout()
+        plt.show()
