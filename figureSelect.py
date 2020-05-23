@@ -6,10 +6,14 @@ import sklearn.cluster as skc
 from sklearn.cluster import KMeans
 import pandas as pd
 from sklearn.neighbors import KNeighborsClassifier
+from skmultilearn.adapt import MLkNN
+from skmultilearn.problem_transform import ClassifierChain
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.svm import SVC
 from sklearn.naive_bayes import GaussianNB
 from sklearn import metrics
+from scipy.sparse import csc_matrix
+import tkinter as tk
 
 def getFigureMatrix(data):
     '''
@@ -157,32 +161,25 @@ def modelPredict(dataTrain, targetTrain, dataTest, targetTest, clf):
         clf.fit(dataTrain, targetTrain[:, i])
         yPred = clf.predict(dataTest)
         yTest = targetTest[i].transpose()
+        if type(yPred) == csc_matrix:
+            # 若判别结果为稀疏矩阵，将其转为稠密矩阵
+            yPred = yPred.todense()
         ans.append(metrics.accuracy_score(yTest, yPred))
-        # print('Accuracy-L{}:\t\t{:.4f}{}'.format(i+1, metrics.accuracy_score(yTest, yPred), '↗'))
     # 对整体进行预测和评估
     clf.fit(dataTrain, targetTrain)
     yPred = clf.predict(dataTest)
     yTest = targetTest.transpose()
+    if type(yPred) == csc_matrix:
+        yPred = yPred.todense()
     ans.append(metrics.hamming_loss(yTest, yPred))
-    ans.append(metrics.label_ranking_loss(yTest, yPred))
     ans.append(np.mean(metrics.precision_score(yTest, yPred, average = None)))
     ans.append(metrics.f1_score(yTest, yPred, average = 'micro'))
-    ans.append(metrics.roc_auc_score(yTest, yPred, average = 'micro'))
     ans.append(metrics.f1_score(yTest, yPred, average = 'macro'))
-    ans.append(metrics.roc_auc_score(yTest, yPred, average = 'macro'))
-    # print('Hamming Loss: \t\t{:.4f}{}'.format(metrics.hamming_loss(yTest, yPred), '↘'))
-    # print('Ranking Loss: \t\t{:.4f}{}'.format(metrics.label_ranking_loss(yTest, yPred), '↘'))
-    # print('Avg. Precision: \t{:.4f}{}'.format(np.mean(metrics.precision_score(yTest, yPred, average = None)), '↗'))
-    # print('Micro-F1: \t\t{:.4f}{}'.format(metrics.f1_score(yTest, yPred, average = 'micro'), '↗'))
-    # print('Micro-AUC: \t\t{:.4f}{}'.format(metrics.roc_auc_score(yTest, yPred, average = 'micro'), '↗'))
-    # print('Macro-F1: \t\t{:.4f}{}'.format(metrics.f1_score(yTest, yPred, average = 'macro'), '↗'))
-    # print('Macro-AUC: \t\t{:.4f}{}'.format(metrics.roc_auc_score(yTest, yPred, average = 'macro'), '↗'))
-    # print()
     return ans
 
 def getEuclideanDistance(data, npData, centers, m):
     '''
-    聚类, 计算特征与聚类中心的欧氏距离
+    聚类, 计算样本与聚类中心的欧氏距离
     Args:
         data: 原数据
         npData: 正例/负例数据
@@ -233,7 +230,7 @@ def getMapping(dataTrain, targetTrain, dataTest, targetTest):
         temp = getEuclideanDistance(dataTest, pDataTest, pCenters, m)
         temp = np.hstack((temp, getEuclideanDistance(dataTest, nDataTest, nCenters, m)))
         mappingTest.append(temp.tolist())
-        ykTest.append([1 if pIndexTest[i] else -1 for i in range(len(targetTest))])
+        ykTest.append([1 if pIndexTest[i] else -1 for i in range(len(targetTest))])  # 适应svm分类器
     ykTrain = [[row[i] for row in ykTrain] for i in range(len(ykTrain[0]))]
     ykTest = [[row[i] for row in ykTest] for i in range(len(ykTest[0]))]
     return mappingTrain, ykTrain, mappingTest, ykTest
@@ -256,34 +253,56 @@ def BRModelPredict(dataTrain, targetTrain, dataTest, targetTest, clf, m):
     for i in range(count):
         if m == 0:
             clf.fit(np.array(dataTrain), np.array(targetTrain)[:, i])
-            y = clf.predict(dataTest)
+            yPred = clf.predict(dataTest)
         else:
             clf.fit(np.array(dataTrain[i]), np.array(targetTrain)[:, i])
-            y = clf.predict(dataTest[i])
+            yPred = clf.predict(dataTest[i])
+        if type(yPred) == csc_matrix:
+            # 若判别结果为稀疏矩阵，将其转为稠密矩阵
+            yPred = yPred.todense()
         temp = []
-        temp.append(metrics.hamming_loss(y, np.array(targetTest)[:, i]))
-        temp.append(metrics.precision_score(y, np.array(targetTest)[:, i]))
-        temp.append(metrics.f1_score(y, np.array(targetTest)[:, i], average = 'micro'))
-        temp.append(metrics.f1_score(y, np.array(targetTest)[:, i], average = 'macro'))
+        temp.append(metrics.hamming_loss(yPred, np.array(targetTest)[:, i]))
+        temp.append(metrics.precision_score(yPred, np.array(targetTest)[:, i]))
+        temp.append(metrics.f1_score(yPred, np.array(targetTest)[:, i], average = 'micro'))
+        temp.append(metrics.f1_score(yPred, np.array(targetTest)[:, i], average = 'macro'))
         BRMetric.append(temp)
     return BRMetric
 
 if __name__ == '__main__':
 
+    # # 查看emotions数据集的特征和标记信息
+    # from skmultilearn.dataset import load_dataset
+    # X_train,  Y_train, feature_names, label_names = load_dataset('emotions', 'train')
+    # feature_names = [item[0] for item in feature_names]
+    # label_names = [item[0] for item in label_names]
+    # data = {
+    #     'mean': feature_names[:16],
+    #     'mean_std': feature_names[16:32],
+    #     'std': feature_names[32:48],
+    #     'std_std': feature_names[48:64],
+    #     'rhythmic': feature_names[64:] + [' '] * 8
+    # }
+    # frame = pd.DataFrame(data)
+    # print(frame)
+    # print(label_names)   
+
     emotionsTrain = loadmat("../dataset/original/train_data.mat")
     emotionsTrainData = emotionsTrain['train_data']  # 训练集的实例特征
     emotionsTrain = loadmat("../dataset/original/train_target.mat")
-    emotionsTrainTarget = emotionsTrain['train_target']  # 训练集的实例特征
+    emotionsTrainTarget = emotionsTrain['train_target']  # 训练集的实例标记
 
     emotionsTest = loadmat("../dataset/original/test_data.mat")
     emotionsTestData = emotionsTest['test_data']  # 测试集的实例特征
     emotionsTest = loadmat("../dataset/original/test_target.mat")
     emotionsTestTarget = emotionsTest['test_target']  # 测试集的实例标记
-    
+
     yTrain = emotionsTrainTarget.transpose()
-    knn = KNeighborsClassifier()
+
+    knn = KNeighborsClassifier(n_neighbors = 10, weights = 'distance', p = 2)
+    # mlknn = MLkNN()
+    cc = ClassifierChain(GaussianNB())
     dt = DecisionTreeClassifier()
-    svm = SVC(gamma = 'auto', probability = True)
+    svm = SVC(kernel='rbf', gamma = 'auto', probability = True)
     nb = GaussianNB()
 
     figureMatrix = getFigureMatrix(emotionsTrainData)  # 特征类别矩阵
@@ -346,10 +365,13 @@ if __name__ == '__main__':
     # KNN
     metricDataOrigin.append(modelPredict(emotionsTrainData, yTrain, emotionsTestData, emotionsTestTarget, knn))
     metricDataSelected.append(modelPredict(figureSelectedTrain, yTrain, figureSelectedTest, emotionsTestTarget, knn))
+    # Classifier Chain
+    metricDataOrigin.append(modelPredict(emotionsTrainData, yTrain, emotionsTestData, emotionsTestTarget, cc))
+    metricDataSelected.append(modelPredict(figureSelectedTrain, yTrain, figureSelectedTest, emotionsTestTarget, cc))
     # Decision Tree
     metricDataOrigin.append(modelPredict(emotionsTrainData, yTrain, emotionsTestData, emotionsTestTarget, dt))
     metricDataSelected.append(modelPredict(figureSelectedTrain, yTrain, figureSelectedTest, emotionsTestTarget, dt))
-    
+
     # 对每个标记进行预测，并输出评价指标，对特征处理前后的多标记表现进行对比
     BRMetricOrigin, BRMetricLift = [], []
     # SVM
@@ -358,20 +380,17 @@ if __name__ == '__main__':
     # Naive Bayes
     BRMetricOrigin.append(BRModelPredict(figureSelectedTrain, yTrain, figureSelectedTest, yTest, nb, 0))
     BRMetricLift.append(BRModelPredict(mappingTrain, ykTrain, mappingTest, ykTest, nb, 1))
+    # Classifier Chain
+    BRMetricOrigin.append(BRModelPredict(figureSelectedTrain, yTrain, figureSelectedTest, yTest, cc, 0))
+    BRMetricLift.append(BRModelPredict(mappingTrain, ykTrain, mappingTest, ykTest, cc, 1))
 
-    # 绘图
-    # 标记选择前后对比
-    figureSize = len(metricDataOrigin)
-    plt.figure(figureSize)
-    xIndex = np.arange(1, 26, 2)
-    xData = ('L1 Accuracy', 'L2 Accuracy', 'L3 Accuracy', 'L4 Accuracy',
-             'L5 Accuracy', 'L6 Accuracy', 'Hamming Loss',
-             'Label Ranking', 'Precision Score',
-             'Micro F1', 'Micro AUC', 'Macro F1', 'Macro AUC')
-    title = ('KNN', 'Decision Tree')
-    barWidth = 0.60
-    for i in range(figureSize):
-        plt.subplot(figureSize, 1, i + 1)
+    def drawFigure1(i):
+        xIndex = np.arange(1, 20, 2)
+        xData = ('L1 Accuracy', 'L2 Accuracy', 'L3 Accuracy', 'L4 Accuracy',
+                'L5 Accuracy', 'L6 Accuracy', 'Hamming Loss',
+                'Precision Score', 'Micro F1',  'Macro F1')
+        title = ('KNN', 'Classifier Chain', 'Decision Tree')
+        barWidth = 0.85
         plt.bar(xIndex, metricDataOrigin[i], width = barWidth,
                 alpha = 0.6, color = 'b', label = 'Origin')
         plt.bar(xIndex + barWidth, metricDataSelected[i], width = barWidth,
@@ -379,25 +398,94 @@ if __name__ == '__main__':
         plt.xticks(xIndex + barWidth / 2, xData, rotation = 40)
         plt.title(title[i])
         plt.legend()
-    plt.tight_layout()
-    plt.show()
-    # 特征处理前后对比
-    figureSize = len(BRMetricOrigin[0])
-    plt.figure(figureSize)
-    xIndex = np.arange(1, 8, 2)
-    xData = ('Hamming Loss', 'Precision Score', 'Micro F1', 'Macro F1')
-    title = ('SVM', 'Naive Bayes')
-    label = ('L1', 'L2', 'L3', 'L4', 'L5','L6')
-    barWidth = 0.60
-    for i in range(len(BRMetricOrigin)):
+        plt.ylim(0, 1.0)
+        for x, y1, y2 in zip(xIndex, metricDataOrigin[i], metricDataSelected[i]):
+                plt.text(x, y1, '%.4f' % y1, ha = 'center', va = 'bottom')
+                plt.text(x + barWidth, y2, '%.4f' % y2, ha = 'center', va = 'bottom')
+        plt.tight_layout()
+        plt.show()
+
+    def drawFigure2(i):
+        figureSize = len(BRMetricOrigin[0])
+        xIndex = np.arange(1, 8, 2)
+        xData = ('Hamming Loss', 'Precision Score', 'Micro F1', 'Macro F1')
+        title = ('SVM', 'Naive Bayes', 'Classifier Chain')
+        label = ('L1', 'L2', 'L3', 'L4', 'L5','L6')
+        barWidth = 0.60
         for j in range(figureSize):
             plt.subplot(figureSize / 2, 2, j + 1)
             plt.bar(xIndex, BRMetricOrigin[i][j], width = barWidth,
                     alpha = 0.6, color = 'b', label = 'Origin')
             plt.bar(xIndex + barWidth, BRMetricLift[i][j], width = barWidth,
-                    alpha = 0.6, color = 'r', label = 'Selected')
+                    alpha = 0.6, color = 'r', label = 'Processed')
             plt.xticks(xIndex + barWidth / 2, xData)
             plt.title(title[i] + '-' + label[j])
             plt.legend()
+            plt.ylim(0, 1.0)
+            for x, y1, y2 in zip(xIndex, BRMetricOrigin[i][j], BRMetricLift[i][j]):
+                plt.text(x, y1, '%.4f' % y1, ha = 'center', va = 'bottom')
+                plt.text(x + barWidth, y2, '%.4f' % y2, ha = 'center', va = 'bottom')
         plt.tight_layout()
         plt.show()
+
+    def cc1BtnClick():
+        drawFigure1(1)
+    
+    def knnBtnClick():
+        drawFigure1(0)
+    
+    def dtBtnClick():
+        drawFigure1(2)
+
+    def svmBtnClick():
+        drawFigure2(0)
+
+    def cc2BtnClick():
+        drawFigure2(2)
+
+    def svmBtnClick():
+        drawFigure2(0)
+
+    def nbBtnClick():
+        drawFigure2(1)
+
+    top = tk.Tk()
+    top.title('多标记分类控制台')
+
+    title = tk.Label(top, text='基于多标记分类的音乐情感分析')
+    selectedLabel = tk.Label(top, text='特征选择前后的算法表现对比')
+    transformenLabel = tk.Label(top, text='特征转换前后的算法表现对比')
+    rFrame = tk.Frame(top)
+    lFrame = tk.Frame(top)
+    
+    cc1Btn = tk.Button(lFrame, text='CC', command=cc1BtnClick)
+    knnBtn = tk.Button(lFrame, text='KNN', command=knnBtnClick)
+    dtBtn = tk.Button(lFrame, text='决策树', command=dtBtnClick)
+    cc2Btn = tk.Button(rFrame, text='CC', command=cc2BtnClick)
+    svmBtn = tk.Button(rFrame, text='SVM', command=svmBtnClick)
+    nbBtn = tk.Button(rFrame, text='朴素贝叶斯', command=nbBtnClick)
+    # dataFigureBtn = tk.Button(lFrame, text='数据集特征信息')
+    # dataFigureBtn = tk.Button(rFrame, text='数据集标记信息')
+
+    rStr = tk.StringVar()
+    rStr.set('0.1')
+    rLabel = tk.Label(rFrame, text='r = ')
+    rEntry = tk.Entry(rFrame, textvariable=rStr, width=5)
+
+    title.grid(row=0, column=2)
+    selectedLabel.grid(row=1, column=0)
+    transformenLabel.grid(row=1, column=3)
+    lFrame.grid(row=2, column=0)
+    rFrame.grid(row=2, column=3)
+    cc1Btn.grid(row=0, column=0)
+    knnBtn.grid(row=1, column=0)
+    dtBtn.grid(row=2, column=0)
+
+    cc2Btn.grid(row=0, column=4)
+    svmBtn.grid(row=1, column=4)
+    nbBtn.grid(row=2, column=4)
+
+    rLabel.grid(row=0, column=0)
+    rEntry.grid(row=0, column=1)
+
+    top.mainloop()
