@@ -3,7 +3,6 @@ from scipy.io import loadmat
 import numpy as np
 import sklearn.cluster as skc
 from sklearn.cluster import KMeans
-import pandas as pd
 from sklearn.neighbors import KNeighborsClassifier
 from skmultilearn.problem_transform import ClassifierChain
 from sklearn.tree import DecisionTreeClassifier
@@ -14,7 +13,7 @@ from scipy.sparse import csc_matrix
 
 class Music:
     '''
-    
+    音乐数据集模型
     '''
     def __init__(self):
         '''

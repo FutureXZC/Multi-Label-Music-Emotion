@@ -1,13 +1,18 @@
 # -*- coding: utf-8 -*-
+'''
+Author: Xiang
+Github: https://github.com/FutureXZC/Multi-Label-Music-Emotion
+'''
 from musicLoad import Music
 from GUI import Console
+import pandas as pd
 
 if __name__ == '__main__':
     m = Music()
     m.figureSelect()
     m.figureMapping()
     c = Console(m)
-    # # 查看emotions数据集的特征和标记信息
+    # 查看emotions数据集的特征和标记信息
     # from skmultilearn.dataset import load_dataset
     # X_train,  Y_train, feature_names, label_names = load_dataset('emotions', 'train')
     # feature_names = [item[0] for item in feature_names]
