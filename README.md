@@ -7,10 +7,10 @@
 
 ## Usage
 
-GUI.py是控制台界面实现程序。  
-main.py是主函数。  
-musicLoad.py是导入音乐数据集以及包含所有运算的实现的程序。  
-使用时只需要利用IDE运行main.py即可。
+&emsp;&emsp;GUI.py是控制台界面实现程序。  
+&emsp;&emsp;main.py是主函数。  
+&emsp;&emsp;musicLoad.py是导入音乐数据集以及包含所有运算的实现的程序。  
+&emsp;&emsp;使用时只需要利用IDE运行main.py即可。
 
 ## Algorithm
 
